@@ -1,0 +1,5 @@
+{
+  "name": "Judo Academy Hub",
+  "description": "A private platform for members of a judo academy to share exclusive documents, images, and resources. The application features role-based access for administrators and users, with content organized by groups.",
+  "requestFramePermissions": []
+}
