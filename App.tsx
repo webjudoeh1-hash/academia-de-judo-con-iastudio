@@ -4,7 +4,9 @@ import { User } from '@supabase/supabase-js';
 import { supabase, getProfile } from './services/supabase';
 import { Profile, UserRole, AuthContextType } from './types';
 import Sidebar from './components/layout/Sidebar';
-import { MenuIcon } from './components/icons';
+import { MenuIcon, SpinnerIcon } from './components/icons';
+import Modal from './components/ui/Modal';
+
 
 // --- Import Views ---
 import DocumentsView from './components/views/DocumentsView';
@@ -87,8 +89,12 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       await fetchProfile(user.id);
     }
   };
+  
+  const sendPasswordResetEmail = async (email: string) => supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin, // Users will be redirected here after password reset
+  });
 
-  const value: AuthContextType = { user, profile, loading, login, logout, refetchProfile };
+  const value: AuthContextType = { user, profile, loading, login, logout, refetchProfile, sendPasswordResetEmail };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
@@ -108,7 +114,14 @@ const LoginView = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, sendPasswordResetEmail } = useAuth();
+  
+  // State for password reset modal
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,48 +136,108 @@ const LoginView = () => {
       setLoading(false);
     }
   };
+  
+  const handleResetPassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSendingReset(true);
+      setResetMessage('');
+      setResetError('');
+      try {
+        const { error } = await sendPasswordResetEmail(resetEmail);
+        if (error) {
+          setResetError(error.message);
+        } else {
+          setResetMessage('Si existe una cuenta con ese email, recibirás las instrucciones para restablecer tu contraseña.');
+        }
+      } catch (e: any) {
+        setResetError(e.message);
+      } finally {
+        setIsSendingReset(false);
+      }
+    };
+    
+  const openResetModal = () => {
+    setIsResetModalOpen(true);
+    setResetEmail('');
+    setResetMessage('');
+    setResetError('');
+  }
+
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
-      <div className="max-w-md w-full bg-gray-800 p-8 rounded-lg shadow-lg border border-gray-700">
-        <div className="flex items-center justify-center mb-6">
-          <div className="bg-red-600 text-white text-3xl font-bold rounded-md p-3 mr-4">柔</div>
-          <h1 className="text-2xl font-bold text-white">Judo Academy Hub</h1>
+    <>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="max-w-md w-full bg-gray-800 p-8 rounded-lg shadow-lg border border-gray-700">
+          <div className="flex items-center justify-center mb-6">
+            <div className="bg-red-600 text-white text-3xl font-bold rounded-md p-3 mr-4">柔</div>
+            <h1 className="text-2xl font-bold text-white">Judo Academy Hub</h1>
+          </div>
+          <form onSubmit={handleLogin}>
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2" htmlFor="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                required
+              />
+            </div>
+            <div className="mb-2">
+              <label className="block text-gray-300 mb-2" htmlFor="password">Contraseña</label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                required
+              />
+            </div>
+             <div className="text-right mb-4">
+                <button type="button" onClick={openResetModal} className="text-sm text-red-400 hover:underline focus:outline-none">
+                    ¿Olvidaste tu contraseña?
+                </button>
+            </div>
+            {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition duration-300 disabled:bg-red-800"
+            >
+              {loading ? 'Iniciando...' : 'Iniciar Sesión'}
+            </button>
+          </form>
         </div>
-        <form onSubmit={handleLogin}>
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2" htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
-              required
-            />
-          </div>
-          <div className="mb-6">
-            <label className="block text-gray-300 mb-2" htmlFor="password">Contraseña</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
-              required
-            />
-          </div>
-          {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition duration-300 disabled:bg-red-800"
-          >
-            {loading ? 'Iniciando...' : 'Iniciar Sesión'}
-          </button>
-        </form>
       </div>
-    </div>
+      
+      <Modal isOpen={isResetModalOpen} onClose={() => setIsResetModalOpen(false)} title="Restablecer Contraseña">
+          <form onSubmit={handleResetPassword}>
+            <p className="text-gray-300 mb-4">Introduce tu email y te enviaremos un enlace para restablecer tu contraseña.</p>
+            <div className="mb-4">
+                <label className="block text-gray-300 mb-2" htmlFor="reset-email">Email</label>
+                <input
+                    type="email"
+                    id="reset-email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                    required
+                />
+            </div>
+            {resetMessage && <p className="text-green-400 text-center mb-4 p-3 bg-green-900/50 border border-green-700 rounded-lg">{resetMessage}</p>}
+            {resetError && <p className="text-red-400 text-center mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg">{resetError}</p>}
+            <div className="mt-6 flex justify-end gap-4">
+                <button type="button" onClick={() => setIsResetModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancelar</button>
+                <button type="submit" disabled={isSendingReset} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:bg-red-800 flex items-center">
+                    {isSendingReset && <SpinnerIcon className="w-5 h-5 mr-2" />}
+                    {isSendingReset ? 'Enviando...' : 'Enviar Instrucciones'}
+                </button>
+            </div>
+          </form>
+      </Modal>
+    </>
   );
 };
 
@@ -173,19 +246,32 @@ const MainApp = () => {
     const { profile, loading, logout } = useAuth();
     const [currentPage, setCurrentPage] = useState('documents');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [viewFilters, setViewFilters] = useState<Record<string, any>>({});
 
     if (loading || !profile) {
         return <div className="h-screen w-screen flex items-center justify-center bg-gray-900"><p className="text-white">Cargando...</p></div>;
     }
     
+    const handleNavigate = (page: string, filters?: any) => {
+        if (filters) {
+            setViewFilters({ [page]: filters });
+        } else {
+             setViewFilters({});
+        }
+        setCurrentPage(page);
+        setIsSidebarOpen(false); // Close sidebar on mobile navigation
+    };
+
     const renderPage = () => {
+        const initialFilter = viewFilters[currentPage];
+        
         if (profile.role === UserRole.Admin) {
             switch (currentPage) {
                 case 'documents': return <DocumentsView />;
                 case 'profile': return <ProfileView />;
-                case 'admin-documents': return <AdminDocumentsView />;
-                case 'admin-groups': return <AdminGroupsView />;
-                case 'admin-users': return <AdminUsersView />;
+                case 'admin-documents': return <AdminDocumentsView initialFilter={initialFilter} />;
+                case 'admin-groups': return <AdminGroupsView onNavigate={handleNavigate} />;
+                case 'admin-users': return <AdminUsersView initialFilter={initialFilter} />;
                 default: return <DocumentsView />;
             }
         }
@@ -195,11 +281,6 @@ const MainApp = () => {
             case 'profile': return <ProfileView />;
             default: return <DocumentsView />;
         }
-    };
-
-    const handleNavigate = (page: string) => {
-        setCurrentPage(page);
-        setIsSidebarOpen(false); // Close sidebar on mobile navigation
     };
 
     return (

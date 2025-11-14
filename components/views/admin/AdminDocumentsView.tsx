@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../App';
 import { Document, Group } from '../../../types';
 import { getAllDocuments, getAllGroups, createDocument, updateDocument, deleteDocument, uploadDocumentFile } from '../../../services/supabase';
 import Modal from '../../ui/Modal';
-import { SpinnerIcon, PlusIcon, EditIcon, DeleteIcon } from '../../icons';
+import { SpinnerIcon, PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../../icons';
 
-const AdminDocumentsView = () => {
+const AdminDocumentsView = ({ initialFilter }: { initialFilter?: any }) => {
     const { user } = useAuth();
     const [documents, setDocuments] = useState<Document[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
@@ -15,6 +15,11 @@ const AdminDocumentsView = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [currentDoc, setCurrentDoc] = useState<Partial<Document> | null>(null);
     const [file, setFile] = useState<File | null>(null);
+    
+    // State for filters
+    const [searchTerm, setSearchTerm] = useState('');
+    const [typeFilter, setTypeFilter] = useState<'all' | 'document' | 'image'>('all');
+    const [groupFilter, setGroupFilter] = useState('all');
 
     const fetchData = async () => {
         setLoading(true);
@@ -32,6 +37,22 @@ const AdminDocumentsView = () => {
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (initialFilter && initialFilter.group) {
+            setGroupFilter(initialFilter.group);
+        }
+    }, [initialFilter]);
+
+    const filteredDocuments = useMemo(() => {
+        return documents
+            .filter(doc => typeFilter === 'all' || doc.file_type === typeFilter)
+            .filter(doc => groupFilter === 'all' || doc.group_id === groupFilter || (groupFilter === 'none' && !doc.group_id))
+            .filter(doc =>
+                doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                doc.description?.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+    }, [documents, searchTerm, typeFilter, groupFilter]);
 
     const openModal = (doc: Partial<Document> | null = null) => {
         setCurrentDoc(doc ? { ...doc } : { title: '', description: '', file_type: 'document', group_id: '' });
@@ -104,9 +125,10 @@ const AdminDocumentsView = () => {
             try {
                 await deleteDocument(doc.id, doc.file_path);
                 await fetchData();
-            } catch (error) {
+                alert('Documento eliminado correctamente.');
+            } catch (error: any) {
                 console.error("Error deleting document:", error);
-                alert("No se pudo eliminar el documento.");
+                alert(`No se pudo eliminar el documento: ${error.message}`);
             }
         }
     };
@@ -130,6 +152,36 @@ const AdminDocumentsView = () => {
             
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
                 <h2 className="text-xl font-bold mb-4">Documentos Subidos</h2>
+                
+                {/* Filters */}
+                <div className="mb-6">
+                    <div className="relative mb-4">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por título o descripción..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap gap-4">
+                        <button onClick={() => setTypeFilter('all')} className={`${typeFilter === 'all' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'} text-white px-4 py-2 rounded-lg font-semibold`}>Todos</button>
+                        <button onClick={() => setTypeFilter('document')} className={`${typeFilter === 'document' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'} text-gray-300 px-4 py-2 rounded-lg font-semibold`}>Documentos</button>
+                        <button onClick={() => setTypeFilter('image')} className={`${typeFilter === 'image' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'} text-gray-300 px-4 py-2 rounded-lg font-semibold`}>Imágenes</button>
+                        <select
+                            value={groupFilter}
+                            onChange={e => setGroupFilter(e.target.value)}
+                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                            <option value="all">Todos los grupos</option>
+                            <option value="none">Para todos (sin grupo)</option>
+                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                    </div>
+                </div>
+
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -142,7 +194,7 @@ const AdminDocumentsView = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {documents.map(doc => (
+                            {filteredDocuments.map(doc => (
                                 <tr key={doc.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 font-semibold">{doc.title}</td>
                                     <td className="p-3">{doc.file_type === 'image' ? 'Imagen' : 'Documento'}</td>
@@ -157,7 +209,7 @@ const AdminDocumentsView = () => {
                         </tbody>
                     </table>
                 </div>
-                 {documents.length === 0 && <p className="text-center text-gray-500 py-10">No hay documentos subidos.</p>}
+                 {filteredDocuments.length === 0 && <p className="text-center text-gray-500 py-10">No se encontraron documentos con los filtros actuales.</p>}
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentDoc?.id ? "Editar Documento" : "Subir Nuevo Archivo"}>

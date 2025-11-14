@@ -50,4 +50,5 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<any>;
   logout: () => Promise<void>;
   refetchProfile: () => Promise<void>;
+  sendPasswordResetEmail: (email: string) => Promise<any>;
 }

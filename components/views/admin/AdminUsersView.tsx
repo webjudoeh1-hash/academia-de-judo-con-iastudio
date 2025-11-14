@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Profile, Group, UserRole } from '../../../types';
-import { getAllProfiles, getAllGroups, updateUserProfile, createAuthUser, deleteUserProfile } from '../../../services/supabase';
+import { getAllProfiles, getAllGroups, updateUserProfile, adminCreateUser, deleteUserProfile } from '../../../services/supabase';
 import Modal from '../../ui/Modal';
-import { SpinnerIcon, PlusIcon, EditIcon, DeleteIcon } from '../../icons';
+import { SpinnerIcon, PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../../icons';
 
 const BELT_OPTIONS = [
   "Blanco", "Blanco-Amarillo", "Amarillo", "Amarillo-Naranja", "Naranja", "Naranja-Verde",
   "Verde", "Verde-Azul", "Azul", "Azul-Marrón", "Marrón", "Negro"
 ];
 
-const AdminUsersView = () => {
+const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
     const [loading, setLoading] = useState(true);
@@ -17,7 +17,12 @@ const AdminUsersView = () => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [currentProfile, setCurrentProfile] = useState<Partial<Profile> | null>(null);
-    const [newUser, setNewUser] = useState({ email: '', password: '' });
+    const [newUser, setNewUser] = useState<Partial<Profile> & { email: string; password?: string; }>({ email: '', password: '', role: UserRole.User });
+
+    // Filters state
+    const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('all');
+    const [groupFilter, setGroupFilter] = useState('all');
 
     const fetchData = async () => {
         setLoading(true);
@@ -36,6 +41,22 @@ const AdminUsersView = () => {
         fetchData();
     }, []);
 
+    useEffect(() => {
+        if (initialFilter && initialFilter.group) {
+            setGroupFilter(initialFilter.group);
+        }
+    }, [initialFilter]);
+    
+    const filteredProfiles = useMemo(() => {
+        return profiles
+            .filter(p => roleFilter === 'all' || p.role === roleFilter)
+            .filter(p => groupFilter === 'all' || p.group_id === groupFilter || (groupFilter === 'none' && !p.group_id))
+            .filter(p =>
+                (p.full_name && p.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+    }, [profiles, searchTerm, roleFilter, groupFilter]);
+
     const openEditModal = (profile: Profile) => {
         setCurrentProfile({ ...profile, group_id: profile.group_id || '' });
         setIsEditModalOpen(true);
@@ -46,7 +67,6 @@ const AdminUsersView = () => {
         if (!currentProfile?.id) return;
         setIsSaving(true);
         try {
-            // Explicitly create the update object to avoid sending joined/read-only data
             const { id, created_at, email, groups, ...updates } = currentProfile;
             
             if (updates.group_id === '') {
@@ -66,11 +86,16 @@ const AdminUsersView = () => {
     
     const handleCreateSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if(!newUser.email || !newUser.password) {
+            alert("El email y la contraseña son obligatorios.");
+            return;
+        }
         setIsSaving(true);
         try {
-            await createAuthUser(newUser.email, newUser.password);
-            alert(`Usuario creado. Se ha enviado un email de confirmación a ${newUser.email}. El nuevo usuario aparecerá en la lista después de confirmar su cuenta y podrá ser editado.`);
-            setNewUser({ email: '', password: '' });
+            await adminCreateUser(newUser);
+            await fetchData(); // Refetch to show the new user
+            alert(`Usuario ${newUser.email} creado. Se ha enviado un correo de confirmación para que active su cuenta.`);
+            setNewUser({ email: '', password: '', role: UserRole.User });
             setIsCreateModalOpen(false);
         } catch (error: any) {
             console.error("Error creating user:", error);
@@ -81,15 +106,21 @@ const AdminUsersView = () => {
     };
 
     const handleDelete = async (profile: Profile) => {
-        if (window.confirm(`¿Estás seguro de que quieres eliminar a ${profile.full_name || profile.email}? Esta acción eliminará su perfil de la aplicación.`)) {
+        if (window.confirm(`¿Estás seguro de que quieres eliminar a ${profile.full_name || profile.email}? Sus datos serán anonimizados y perderá el acceso.`)) {
             try {
                 await deleteUserProfile(profile.id);
                 await fetchData();
-            } catch (error) {
+                alert('Usuario eliminado correctamente.');
+            } catch (error: any) {
                 console.error("Error deleting profile:", error);
-                alert("No se pudo eliminar el perfil.");
+                alert(`No se pudo eliminar el perfil: ${error.message}`);
             }
         }
+    };
+
+    const handleNewUserChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setNewUser(prev => ({ ...prev, [name]: value }));
     };
 
     if (loading) {
@@ -111,6 +142,42 @@ const AdminUsersView = () => {
             
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
                 <h2 className="text-xl font-bold mb-4">Lista de Usuarios</h2>
+
+                {/* Filters */}
+                 <div className="mb-6">
+                    <div className="relative mb-4">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre o email..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                        <select
+                            value={roleFilter}
+                            onChange={e => setRoleFilter(e.target.value)}
+                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                            <option value="all">Todos los roles</option>
+                            <option value={UserRole.User}>Usuario</option>
+                            <option value={UserRole.Admin}>Administrador</option>
+                        </select>
+                        <select
+                            value={groupFilter}
+                            onChange={e => setGroupFilter(e.target.value)}
+                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                            <option value="all">Todos los grupos</option>
+                            <option value="none">Sin asignar</option>
+                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -123,7 +190,7 @@ const AdminUsersView = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {profiles.map(p => (
+                            {filteredProfiles.map(p => (
                                 <tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 font-semibold">{p.full_name || <span className="text-gray-500">Sin nombre</span>}</td>
                                     <td className="p-3 text-gray-400">{p.email}</td>
@@ -142,7 +209,7 @@ const AdminUsersView = () => {
                         </tbody>
                     </table>
                 </div>
-                {profiles.length === 0 && <p className="text-center text-gray-500 py-10">No hay usuarios registrados.</p>}
+                {filteredProfiles.length === 0 && <p className="text-center text-gray-500 py-10">No se encontraron usuarios con los filtros actuales.</p>}
             </div>
 
             {/* Edit User Modal */}
@@ -154,7 +221,8 @@ const AdminUsersView = () => {
                         <div><label className="block mb-1">Grupo</label><select value={currentProfile?.group_id || ''} onChange={e => setCurrentProfile(prev => ({...prev, group_id: e.target.value}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="">Sin asignar</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                         <div><label className="block mb-1">Rol</label><select value={currentProfile?.role || 'user'} onChange={e => setCurrentProfile(prev => ({...prev, role: e.target.value as UserRole}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="user">Usuario</option><option value="admin">Administrador</option></select></div>
                         <div><label className="block mb-1">Cinturón</label><select value={currentProfile?.belt || ''} onChange={e => setCurrentProfile(prev => ({...prev, belt: e.target.value}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="">Seleccionar cinturón...</option>{BELT_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
-                        {/* Add other fields as needed */}
+                        <div><label className="block mb-1">Teléfono</label><input type="tel" value={currentProfile?.phone || ''} onChange={e => setCurrentProfile(prev => ({...prev, phone: e.target.value}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
+                        <div><label className="block mb-1">Edad</label><input type="number" value={currentProfile?.age || ''} onChange={e => setCurrentProfile(prev => ({...prev, age: e.target.value ? parseInt(e.target.value) : undefined}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
                     </div>
                     <div className="mt-6 flex justify-end gap-4">
                         <button type="button" onClick={() => setIsEditModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancelar</button>
@@ -167,22 +235,29 @@ const AdminUsersView = () => {
             </Modal>
             
             {/* Create User Modal */}
-             <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Crear Nuevo Usuario">
+            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Crear Nuevo Usuario">
                 <form onSubmit={handleCreateSubmit} className="text-gray-300">
-                    <p className="text-sm bg-blue-900/50 border border-blue-700 text-blue-200 p-3 rounded-lg mb-4">Se enviará un correo de confirmación al nuevo usuario para que establezca su cuenta. Después de confirmar, aparecerá en la lista y podrás editar su perfil para asignarle un grupo y otros detalles.</p>
-                    <div className="mb-4">
-                        <label className="block mb-1">Email del Usuario *</label>
-                        <input type="email" value={newUser.email} onChange={e => setNewUser(p => ({...p, email: e.target.value}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded" required/>
-                    </div>
-                    <div className="mb-4">
-                        <label className="block mb-1">Contraseña Temporal *</label>
-                        <input type="password" value={newUser.password} onChange={e => setNewUser(p => ({...p, password: e.target.value}))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded" required/>
+                    <p className="text-sm bg-blue-900/50 border border-blue-700 text-blue-200 p-3 rounded-lg mb-4">El perfil del usuario se creará al instante. Se enviará un correo de confirmación para que active su cuenta con la contraseña indicada.</p>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Auth fields */}
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-gray-700 pb-4 mb-4">
+                             <div><label className="block mb-1">Email *</label><input type="email" name="email" value={newUser.email} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded" required/></div>
+                             <div><label className="block mb-1">Contraseña *</label><input type="password" name="password" value={newUser.password || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded" required/></div>
+                        </div>
+                        {/* Profile fields */}
+                        <div><label className="block mb-1">Nombre</label><input type="text" name="full_name" value={newUser.full_name || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
+                        <div><label className="block mb-1">Apellidos</label><input type="text" name="surnames" value={newUser.surnames || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
+                        <div><label className="block mb-1">Grupo</label><select name="group_id" value={newUser.group_id || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="">Sin asignar</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+                        <div><label className="block mb-1">Rol</label><select name="role" value={newUser.role || 'user'} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="user">Usuario</option><option value="admin">Administrador</option></select></div>
+                        <div><label className="block mb-1">Cinturón</label><select name="belt" value={newUser.belt || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"><option value="">Seleccionar cinturón...</option>{BELT_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                        <div><label className="block mb-1">Teléfono</label><input type="tel" name="phone" value={newUser.phone || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
+                        <div><label className="block mb-1">Edad</label><input type="number" name="age" value={newUser.age || ''} onChange={handleNewUserChange} className="w-full p-2 bg-gray-700 border border-gray-600 rounded"/></div>
                     </div>
                     <div className="mt-6 flex justify-end gap-4">
                         <button type="button" onClick={() => setIsCreateModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancelar</button>
                         <button type="submit" disabled={isSaving} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:bg-red-800 flex items-center">
                             {isSaving && <SpinnerIcon className="w-5 h-5 mr-2" />}
-                            Crear y Enviar Invitación
+                            Crear Usuario
                         </button>
                     </div>
                 </form>

@@ -11,7 +11,11 @@ interface GroupWithCounts extends Group {
     docCount: number;
 }
 
-const AdminGroupsView = () => {
+interface AdminGroupsViewProps {
+    onNavigate: (page: string, filters?: any) => void;
+}
+
+const AdminGroupsView: React.FC<AdminGroupsViewProps> = ({ onNavigate }) => {
     const [groups, setGroups] = useState<GroupWithCounts[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,9 +81,10 @@ const AdminGroupsView = () => {
             try {
                 await deleteGroup(group.id);
                 await fetchData();
-            } catch (error) {
+                alert('Grupo eliminado correctamente.');
+            } catch (error: any) {
                 console.error("Error deleting group:", error);
-                alert("No se pudo eliminar el grupo.");
+                alert(`No se pudo eliminar el grupo: ${error.message}`);
             }
         }
     };
@@ -116,14 +121,14 @@ const AdminGroupsView = () => {
                         </div>
                         <p className="text-gray-400 text-sm mb-4 flex-grow">{group.description || 'Sin descripción'}</p>
                         <div className="flex justify-around pt-4 border-t border-gray-700">
-                            <div className="text-center">
-                                <p className="flex items-center gap-2"><UserIcon className="w-4 h-4 text-gray-500" /> Usuarios</p>
-                                <p className="text-2xl font-bold">{group.userCount}</p>
-                            </div>
-                            <div className="text-center">
-                                <p className="flex items-center gap-2"><DocumentIcon className="w-4 h-4 text-gray-500" /> Documentos</p>
-                                <p className="text-2xl font-bold">{group.docCount}</p>
-                            </div>
+                            <button onClick={() => onNavigate('admin-users', { group: group.id })} className="text-center group hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                                <p className="flex items-center gap-2 text-gray-300 group-hover:text-white"><UserIcon className="w-4 h-4 text-gray-500 group-hover:text-gray-300" /> Usuarios</p>
+                                <p className="text-2xl font-bold group-hover:text-white">{group.userCount}</p>
+                            </button>
+                            <button onClick={() => onNavigate('admin-documents', { group: group.id })} className="text-center group hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                                <p className="flex items-center gap-2 text-gray-300 group-hover:text-white"><DocumentIcon className="w-4 h-4 text-gray-500 group-hover:text-gray-300" /> Documentos</p>
+                                <p className="text-2xl font-bold group-hover:text-white">{group.docCount}</p>
+                            </button>
                         </div>
                     </div>
                 ))}
