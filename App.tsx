@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase, getProfile } from './services/supabase';
 import { Profile, UserRole, AuthContextType } from './types';
 import Sidebar from './components/layout/Sidebar';
+import { MenuIcon } from './components/icons';
 
 // --- Import Views ---
 import DocumentsView from './components/views/DocumentsView';
@@ -169,6 +170,7 @@ const LoginView = () => {
 const MainApp = () => {
     const { profile, loading, logout } = useAuth();
     const [currentPage, setCurrentPage] = useState('documents');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     if (loading || !profile) {
         return <div className="h-screen w-screen flex items-center justify-center bg-gray-900"><p className="text-white">Cargando...</p></div>;
@@ -193,12 +195,36 @@ const MainApp = () => {
         }
     };
 
+    const handleNavigate = (page: string) => {
+        setCurrentPage(page);
+        setIsSidebarOpen(false); // Close sidebar on mobile navigation
+    };
+
     return (
-        <div className="flex bg-gray-900 min-h-screen">
-            <Sidebar profile={profile} currentPage={currentPage} onNavigate={setCurrentPage} onLogout={logout} />
-            <main className="flex-1 overflow-y-auto">
-                {renderPage()}
-            </main>
+        <div className="bg-gray-900 min-h-screen lg:flex">
+            <Sidebar 
+                profile={profile} 
+                currentPage={currentPage} 
+                onNavigate={handleNavigate} 
+                onLogout={logout}
+                isOpen={isSidebarOpen}
+                onClose={() => setIsSidebarOpen(false)}
+            />
+            <div className="flex-1 flex flex-col min-w-0">
+                {/* Mobile Header */}
+                <header className="lg:hidden bg-gray-800 sticky top-0 z-20 border-b border-gray-700 p-4 flex items-center">
+                    <button onClick={() => setIsSidebarOpen(true)} className="text-white p-2 rounded-md hover:bg-gray-700">
+                        <MenuIcon className="w-6 h-6"/>
+                    </button>
+                    <div className="flex items-center mx-auto">
+                        <div className="bg-red-600 text-white text-xl font-bold rounded-md p-1 mr-2">柔</div>
+                        <span className="text-lg font-semibold text-white">Portal Privado</span>
+                    </div>
+                </header>
+                <main className="flex-1 overflow-y-auto">
+                    {renderPage()}
+                </main>
+            </div>
         </div>
     );
 };
