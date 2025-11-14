@@ -37,47 +37,49 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   };
 
   useEffect(() => {
-    const fetchSession = async () => {
+    setLoading(true);
+
+    const initializeSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("Error getting session on initial load:", error);
-        }
-        
-        const session = data?.session;
+        const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user.id);
+        } else {
+          setProfile(null);
         }
-      } catch (e) {
-        console.error("Critical error during initial session fetch:", e);
+      } catch (error) {
+        console.error("Error initializing session:", error);
         setUser(null);
         setProfile(null);
       } finally {
         setLoading(false);
       }
     };
-    
-    fetchSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
+    initializeSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+            fetchProfile(session.user.id);
+        } else {
+            setProfile(null);
+        }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => supabase.auth.signInWithPassword({ email, password });
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Error logging out:', error);
+    }
+    // The onAuthStateChange listener will handle clearing user and profile state.
   };
 
   const refetchProfile = async () => {
