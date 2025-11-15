@@ -28,70 +28,89 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const userProfile = await getProfile(userId);
-      setProfile(userProfile);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      setProfile(null);
-    }
-  };
-
   useEffect(() => {
     setLoading(true);
 
-    const initializeSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-        }
-      } catch (error) {
-        console.error("Error initializing session:", error);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const user = session?.user ?? null;
 
-    initializeSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-            fetchProfile(session.user.id);
+        if (user) {
+            try {
+                const profileData = await getProfile(user.id);
+                // This check is crucial for session restoration on page load.
+                // It ensures a user with a valid token for a now-deleted account cannot access the app.
+                if (profileData && profileData.full_name === 'Usuario Eliminado') {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                    setProfile(null);
+                } else {
+                    setUser(user);
+                    setProfile(profileData);
+                }
+            } catch (err) {
+                console.error("Profile fetch failed for logged-in user, signing out.", err);
+                await supabase.auth.signOut();
+                setUser(null);
+                setProfile(null);
+            }
         } else {
+            setUser(null);
             setProfile(null);
         }
+        
+        setLoading(false);
     });
 
     return () => {
-      subscription.unsubscribe();
+        subscription.unsubscribe();
     };
   }, []);
 
-  const login = async (email: string, password: string) => supabase.auth.signInWithPassword({ email, password });
-  const logout = async () => {
-    const { error } = await supabase.auth.signOut();
+  const login = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
     if (error) {
-      console.error('Error logging out:', error);
+        // Invalid login, return supabase error
+        return { data, error };
     }
-    // The onAuthStateChange listener will handle clearing user and profile state.
+
+    if (data.user) {
+        const profileData = await getProfile(data.user.id);
+        if (profileData && profileData.full_name === 'Usuario Eliminado') {
+            await supabase.auth.signOut();
+            // Create a custom error object that looks like a Supabase error to be displayed on the login screen.
+            const customError = {
+                message: "Este usuario ha sido dado de baja. Por favor, consulte con un administrador.",
+                name: "AuthApiError",
+            };
+            return { data: { user: null, session: null }, error: customError as any };
+        }
+    }
+
+    // Valid user, return success. onAuthStateChange will handle the state update.
+    return { data, error };
+  };
+  
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
   };
 
   const refetchProfile = async () => {
     if (user) {
-      await fetchProfile(user.id);
+        try {
+            const profileData = await getProfile(user.id);
+            setProfile(profileData);
+        } catch (error) {
+            console.error('Error refetching profile:', error);
+            await logout();
+        }
     }
   };
   
   const sendPasswordResetEmail = async (email: string) => supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin, // Users will be redirected here after password reset
+      redirectTo: window.location.origin,
   });
 
   const value: AuthContextType = { user, profile, loading, login, logout, refetchProfile, sendPasswordResetEmail };
@@ -116,7 +135,6 @@ const LoginView = () => {
   const [loading, setLoading] = useState(false);
   const { login, sendPasswordResetEmail } = useAuth();
   
-  // State for password reset modal
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
