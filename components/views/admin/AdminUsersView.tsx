@@ -23,7 +23,6 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [groupFilter, setGroupFilter] = useState('all');
-    const [statusFilter, setStatusFilter] = useState('active'); // 'active', 'deleted', 'all'
 
     const fetchData = async () => {
         setLoading(true);
@@ -50,18 +49,13 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
     
     const filteredProfiles = useMemo(() => {
         return profiles
-            .filter(p => {
-                if (statusFilter === 'active') return p.full_name !== 'Usuario Eliminado';
-                if (statusFilter === 'deleted') return p.full_name === 'Usuario Eliminado';
-                return true; // for 'all'
-            })
             .filter(p => roleFilter === 'all' || p.role === roleFilter)
             .filter(p => groupFilter === 'all' || p.group_id === groupFilter || (groupFilter === 'none' && !p.group_id))
             .filter(p =>
                 (p.full_name && p.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
                 (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase()))
             );
-    }, [profiles, searchTerm, roleFilter, groupFilter, statusFilter]);
+    }, [profiles, searchTerm, roleFilter, groupFilter]);
 
     const openEditModal = (profile: Profile) => {
         setCurrentProfile({ ...profile, group_id: profile.group_id || '' });
@@ -163,15 +157,6 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                     </div>
                     <div className="flex flex-wrap gap-4">
                         <select
-                            value={statusFilter}
-                            onChange={e => setStatusFilter(e.target.value)}
-                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                        >
-                            <option value="active">Usuarios Activos</option>
-                            <option value="deleted">Usuarios Eliminados</option>
-                            <option value="all">Todos los estados</option>
-                        </select>
-                        <select
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
                             className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -207,12 +192,7 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                         <tbody>
                             {filteredProfiles.map(p => (
                                 <tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                    <td className="p-3 font-semibold">
-                                        {p.full_name || <span className="text-gray-500">Sin nombre</span>}
-                                        {p.full_name === 'Usuario Eliminado' && (
-                                            <span className="ml-2 text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full">Eliminado</span>
-                                        )}
-                                    </td>
+                                    <td className="p-3 font-semibold">{p.full_name || <span className="text-gray-500">Sin nombre</span>}</td>
                                     <td className="p-3 text-gray-400">{p.email}</td>
                                     <td className="p-3">{p.groups?.name || <span className="text-gray-400">Sin asignar</span>}</td>
                                     <td className="p-3">
@@ -222,7 +202,7 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                                     </td>
                                     <td className="p-3 flex justify-end gap-2">
                                         <button onClick={() => openEditModal(p)} className="text-blue-400 hover:text-blue-300 p-2 rounded-full hover:bg-gray-600"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDelete(p)} className="text-red-400 hover:text-red-300 p-2 rounded-full hover:bg-gray-600" disabled={p.full_name === 'Usuario Eliminado'}><DeleteIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => handleDelete(p)} className="text-red-400 hover:text-red-300 p-2 rounded-full hover:bg-gray-600"><DeleteIcon className="w-5 h-5"/></button>
                                     </td>
                                 </tr>
                             ))}
