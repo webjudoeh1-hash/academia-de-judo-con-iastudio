@@ -28,10 +28,23 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Error logging out:', error);
+    }
+    // The onAuthStateChange listener will handle clearing user and profile state.
+  };
+
   const fetchProfile = async (userId: string) => {
     try {
       const userProfile = await getProfile(userId);
-      setProfile(userProfile);
+      // Check if the user is active. If not, log them out.
+      if (userProfile && !userProfile.is_active) {
+        await logout();
+      } else {
+        setProfile(userProfile);
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
       setProfile(null);
@@ -62,9 +75,10 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     initializeSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-            fetchProfile(session.user.id);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+            fetchProfile(currentUser.id);
         } else {
             setProfile(null);
         }
@@ -76,13 +90,6 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   const login = async (email: string, password: string) => supabase.auth.signInWithPassword({ email, password });
-  const logout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error logging out:', error);
-    }
-    // The onAuthStateChange listener will handle clearing user and profile state.
-  };
 
   const refetchProfile = async () => {
     if (user) {

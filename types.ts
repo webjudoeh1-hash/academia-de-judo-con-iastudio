@@ -39,6 +39,7 @@ export interface Profile {
   belt?: string;
   group_id?: string | null;
   role: UserRole;
+  is_active: boolean;
   created_at: string;
   groups?: Group;
 }

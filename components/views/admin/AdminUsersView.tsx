@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Profile, Group, UserRole } from '../../../types';
-import { getAllProfiles, getAllGroups, updateUserProfile, adminCreateUser, deleteUserProfile } from '../../../services/supabase';
+import { getAllProfiles, getAllGroups, updateUserProfile, adminCreateUser, setUserActiveStatus } from '../../../services/supabase';
 import Modal from '../../ui/Modal';
-import { SpinnerIcon, PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../../icons';
+import { SpinnerIcon, PlusIcon, EditIcon, SearchIcon, UserCheckIcon, UserXIcon } from '../../icons';
 
 const BELT_OPTIONS = [
   "Blanco", "Blanco-Amarillo", "Amarillo", "Amarillo-Naranja", "Naranja", "Naranja-Verde",
@@ -23,6 +23,7 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [groupFilter, setGroupFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('active');
 
     const fetchData = async () => {
         setLoading(true);
@@ -49,13 +50,19 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
     
     const filteredProfiles = useMemo(() => {
         return profiles
+            .filter(p => {
+                if (statusFilter === 'all') return true;
+                if (statusFilter === 'active') return p.is_active;
+                if (statusFilter === 'inactive') return !p.is_active;
+                return true;
+            })
             .filter(p => roleFilter === 'all' || p.role === roleFilter)
             .filter(p => groupFilter === 'all' || p.group_id === groupFilter || (groupFilter === 'none' && !p.group_id))
             .filter(p =>
                 (p.full_name && p.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
                 (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase()))
             );
-    }, [profiles, searchTerm, roleFilter, groupFilter]);
+    }, [profiles, searchTerm, roleFilter, groupFilter, statusFilter]);
 
     const openEditModal = (profile: Profile) => {
         setCurrentProfile({ ...profile, group_id: profile.group_id || '' });
@@ -67,7 +74,7 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
         if (!currentProfile?.id) return;
         setIsSaving(true);
         try {
-            const { id, created_at, email, groups, ...updates } = currentProfile;
+            const { id, created_at, email, groups, is_active, ...updates } = currentProfile;
             
             if (updates.group_id === '') {
                 updates.group_id = null;
@@ -105,15 +112,20 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
         }
     };
 
-    const handleDelete = async (profile: Profile) => {
-        if (window.confirm(`¿Estás seguro de que quieres eliminar a ${profile.full_name || profile.email}? Sus datos serán anonimizados y perderá el acceso.`)) {
+    const handleToggleActivation = async (profile: Profile) => {
+        const action = profile.is_active ? 'desactivar' : 'reactivar';
+        const confirmation = window.confirm(
+            `¿Estás seguro de que quieres ${action} a ${profile.full_name || profile.email}? ` +
+            (profile.is_active ? 'El usuario no podrá iniciar sesión.' : 'El usuario recuperará el acceso.')
+        );
+        if (confirmation) {
             try {
-                await deleteUserProfile(profile.id);
+                await setUserActiveStatus(profile.id, !profile.is_active);
                 await fetchData();
-                alert('Usuario eliminado correctamente.');
+                alert(`Usuario ${action}do correctamente.`);
             } catch (error: any) {
-                console.error("Error deleting profile:", error);
-                alert(`No se pudo eliminar el perfil: ${error.message}`);
+                console.error(`Error trying to ${action} profile:`, error);
+                alert(`No se pudo ${action} el perfil: ${error.message}`);
             }
         }
     };
@@ -155,16 +167,12 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                             className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
                     </div>
-                    <div className="flex flex-wrap gap-4">
-                        <select
-                            value={roleFilter}
-                            onChange={e => setRoleFilter(e.target.value)}
-                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                        >
-                            <option value="all">Todos los roles</option>
-                            <option value={UserRole.User}>Usuario</option>
-                            <option value={UserRole.Admin}>Administrador</option>
-                        </select>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-1 bg-gray-700 p-1 rounded-lg">
+                            <button onClick={() => setStatusFilter('active')} className={`px-3 py-1 text-sm rounded-md transition-colors ${statusFilter === 'active' ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>Activos</button>
+                            <button onClick={() => setStatusFilter('inactive')} className={`px-3 py-1 text-sm rounded-md transition-colors ${statusFilter === 'inactive' ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>Inactivos</button>
+                            <button onClick={() => setStatusFilter('all')} className={`px-3 py-1 text-sm rounded-md transition-colors ${statusFilter === 'all' ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>Todos</button>
+                        </div>
                         <select
                             value={groupFilter}
                             onChange={e => setGroupFilter(e.target.value)}
@@ -173,6 +181,15 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                             <option value="all">Todos los grupos</option>
                             <option value="none">Sin asignar</option>
                             {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                        <select
+                            value={roleFilter}
+                            onChange={e => setRoleFilter(e.target.value)}
+                            className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        >
+                            <option value="all">Todos los roles</option>
+                            <option value={UserRole.User}>Usuario</option>
+                            <option value={UserRole.Admin}>Administrador</option>
                         </select>
                     </div>
                 </div>
@@ -186,6 +203,7 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                                 <th className="p-3">Email</th>
                                 <th className="p-3">Grupo</th>
                                 <th className="p-3">Rol</th>
+                                <th className="p-3">Estado</th>
                                 <th className="p-3 text-right">Acciones</th>
                             </tr>
                         </thead>
@@ -200,9 +218,18 @@ const AdminUsersView = ({ initialFilter }: { initialFilter?: any }) => {
                                         {p.role}
                                       </span>
                                     </td>
+                                    <td className="p-3">
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${p.is_active ? 'bg-green-800 text-green-200' : 'bg-gray-600 text-gray-300'}`}>
+                                            {p.is_active ? 'Activo' : 'Inactivo'}
+                                        </span>
+                                    </td>
                                     <td className="p-3 flex justify-end gap-2">
-                                        <button onClick={() => openEditModal(p)} className="text-blue-400 hover:text-blue-300 p-2 rounded-full hover:bg-gray-600"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDelete(p)} className="text-red-400 hover:text-red-300 p-2 rounded-full hover:bg-gray-600"><DeleteIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => openEditModal(p)} className="text-blue-400 hover:text-blue-300 p-2 rounded-full hover:bg-gray-600" title="Editar Usuario"><EditIcon className="w-5 h-5"/></button>
+                                        {p.is_active ? (
+                                            <button onClick={() => handleToggleActivation(p)} className="text-yellow-400 hover:text-yellow-300 p-2 rounded-full hover:bg-gray-600" title="Desactivar Usuario"><UserXIcon className="w-5 h-5"/></button>
+                                        ) : (
+                                            <button onClick={() => handleToggleActivation(p)} className="text-green-400 hover:text-green-300 p-2 rounded-full hover:bg-gray-600" title="Reactivar Usuario"><UserCheckIcon className="w-5 h-5"/></button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

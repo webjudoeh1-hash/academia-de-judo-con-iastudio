@@ -158,6 +158,7 @@ export const adminCreateUser = async (userData: Partial<Profile> & { email: stri
         group_id: userData.group_id === '' ? null : userData.group_id,
         // FIX: Replaced string literal 'user' with UserRole.User enum to satisfy TypeScript type checking.
         role: userData.role || UserRole.User,
+        is_active: true,
     };
     
     const { error: profileError } = await supabase.from('profiles').update(profileData).eq('id', authData.user.id);
@@ -171,48 +172,14 @@ export const adminCreateUser = async (userData: Partial<Profile> & { email: stri
     return authData.user;
 };
 
-export const deleteUserProfile = async (userId: string) => {
-    // This is a "soft delete" or "anonymization" process.
-    // A hard delete of the user (from auth.users) is not possible from the client-side
-    // for security reasons. Attempting to delete the profile directly would also fail
-    // due to foreign key constraints linking it to auth.users.
-    // This process removes the user's data and associations, effectively disabling them.
-
-    // Step 1: Disassociate documents uploaded by this user.
-    const { error: docUpdateError } = await supabase
-        .from('documents')
-        .update({ uploader_id: null, uploader_email: 'Usuario eliminado' })
-        .eq('uploader_id', userId);
-        
-    if (docUpdateError) {
-        console.error("Error updating user's documents before deletion:", docUpdateError);
-        throw docUpdateError;
-    }
-
-    // Step 2: Anonymize and disable the user's profile by updating it.
-    const anonymizedData: Partial<Profile> = {
-        full_name: 'Usuario Eliminado',
-        surnames: '',
-        phone: '',
-        age: undefined,
-        address: '',
-        tutor_name: '',
-        belt: '',
-        group_id: null,
-        role: UserRole.User, // Revoke admin privileges
-    };
-
-    const { error: profileUpdateError } = await supabase
+export const setUserActiveStatus = async (userId: string, isActive: boolean) => {
+    const { error } = await supabase
         .from('profiles')
-        .update(anonymizedData)
+        .update({ is_active: isActive })
         .eq('id', userId);
-
-    if (profileUpdateError) {
-        console.error("Error anonymizing profile:", profileUpdateError);
-        throw profileUpdateError;
-    }
     
-    // We do not delete the row from the 'profiles' table to avoid FK violations.
-    // The user's auth entry remains, but their profile data is cleared and they
-    // can no longer use the app meaningfully.
+    if (error) {
+        console.error("Error updating user status:", error);
+        throw error;
+    }
 }
